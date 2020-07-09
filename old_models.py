@@ -12,8 +12,129 @@ from keras.constraints import max_norm
 import numpy as np
 import utils
 
+def EEGNet(nb_classes, Chans=64, Samples=128, D=2,
+           dropoutRate=0.5, kernLength=64, numFilters=8, norm_rate=0.25):
+    """ Keras Implementation of EEGNet (https://arxiv.org/abs/1611.08024v3)
 
-def EEGNet(nb_classes, Chans=64, Samples=128, regRate=0.0001,
+    Requires Tensorflow >= 1.5 and Keras >= 2.1.3
+
+    Note that this implements the newest version of EEGNet and NOT the earlier
+    version (version v1 and v2 on arxiv). We strongly recommend using this
+    architecture as it performs much better and has nicer properties than
+    our earlier version.
+
+    Note that we use 'image_data_format' = 'channels_first' in there keras.json
+    configuration file.
+
+    Inputs:
+
+        nb_classes: int, number of classes to classify
+        Chans, Samples: number of channels and time points in the EEG data
+        regRate: regularization parameter for L1 and L2 penalties
+        dropoutRate: dropout fraction
+        kernLength: length of temporal convolution in first layer
+        numFilters: number of temporal-spatial filter pairs to learn
+        D: number of spatial filters to learn within each temporal convolution. Default: D = 2
+
+    Depending on the task, using numFilters = 4 or 8 seemed to do pretty well
+    across tasks.
+    """
+    input1 = Input(shape=(1, Chans, Samples))
+    # input1 = Permute((2, 1))(input_original)
+    # input1 = Reshape(target_shape=(1, Chans, Samples))(input_original)
+    layer1 = Conv2D(numFilters, (1, kernLength), padding='same',
+                    input_shape=(1, Chans, Samples),
+                    use_bias=False,
+                    data_format='channels_first')(input1)
+    layer1 = BatchNormalization(axis=1)(layer1)
+    layer1 = DepthwiseConv2D((Chans, 1),
+                             depth_multiplier=D,
+                             depthwise_constraint=max_norm(1.),
+                             use_bias=False,
+                             data_format='channels_first')(layer1)
+    layer1 = BatchNormalization(axis=1)(layer1)
+    layer1 = Activation('elu')(layer1)
+    layer1 = AveragePooling2D((1, 4), data_format='channels_first')(layer1)
+    layer1 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer1)
+
+    layer2 = SeparableConv2D(numFilters * D, (1, 16),
+                             use_bias=False, padding='same',
+                             data_format='channels_first')(layer1)
+    layer2 = BatchNormalization(axis=1)(layer2)
+    layer2 = Activation('elu')(layer2)
+    layer2 = AveragePooling2D((1, 8), data_format='channels_first')(layer2)
+    layer2 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer2)
+
+    flatten = Flatten(name='flatten')(layer2)
+
+    dense = Dense(nb_classes, name='dense',kernel_constraint = max_norm(norm_rate))(flatten)
+    softmax = Activation('softmax', name='softmax')(dense)
+
+    return Model(inputs=input1, outputs=softmax)
+
+def EEGNet_output(nb_classes, Chans=64, Samples=128, D=2, dropoutRate=0.5,
+                  kernLength=64, numFilters=8, norm_rate=0.25, x_input=None):
+    """ Keras Implementation of EEGNet (https://arxiv.org/abs/1611.08024v3)
+
+    Requires Tensorflow >= 1.5 and Keras >= 2.1.3
+
+    Note that this implements the newest version of EEGNet and NOT the earlier
+    version (version v1 and v2 on arxiv). We strongly recommend using this
+    architecture as it performs much better and has nicer properties than
+    our earlier version.
+
+    Note that we use 'image_data_format' = 'channels_first' in there keras.json
+    configuration file.
+
+    Inputs:
+
+        nb_classes: int, number of classes to classify
+        Chans, Samples: number of channels and time points in the EEG data
+        regRate: regularization parameter for L1 and L2 penalties
+        dropoutRate: dropout fraction
+        kernLength: length of temporal convolution in first layer
+        numFilters: number of temporal-spatial filter pairs to learn
+        D: number of spatial filters to learn within each temporal convolution. Default: D = 2
+
+    Depending on the task, using numFilters = 4 or 8 seemed to do pretty well
+    across tasks.
+    """
+    input1 = x_input
+    # input1 = Input(shape=(1, Chans, Samples))
+    # input1 = Permute((2, 1))(input_original)
+    # input1 = Reshape(target_shape=(1, Chans, Samples))(input_original)
+    layer1 = Conv2D(numFilters, (1, kernLength), padding='same',
+                    input_shape=(1, Chans, Samples),
+                    use_bias=False,
+                    data_format='channels_first')(input1)
+    layer1 = BatchNormalization(axis=1)(layer1)
+    layer1 = DepthwiseConv2D((Chans, 1),
+                             depth_multiplier=D,
+                             depthwise_constraint=max_norm(1.),
+                             use_bias=False,
+                             data_format='channels_first')(layer1)
+    layer1 = BatchNormalization(axis=1)(layer1)
+    layer1 = Activation('elu')(layer1)
+    layer1 = AveragePooling2D((1, 4), data_format='channels_first')(layer1)
+    layer1 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer1)
+
+    layer2 = SeparableConv2D(numFilters * D, (1, 16),
+                             use_bias=False, padding='same',
+                             data_format='channels_first')(layer1)
+    layer2 = BatchNormalization(axis=1)(layer2)
+    layer2 = Activation('elu')(layer2)
+    layer2 = AveragePooling2D((1, 8), data_format='channels_first')(layer2)
+    layer2 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer2)
+
+    flatten = Flatten(name='flatten')(layer2)
+
+    dense = Dense(nb_classes, name='dense',kernel_constraint = max_norm(norm_rate))(flatten)
+    softmax = Activation('softmax', name='softmax')(dense)
+
+    return softmax
+
+
+def EEGNet_old(nb_classes, Chans=64, Samples=128, regRate=0.0001,
            dropoutRate=0.25, kernLength=64, numFilters=8):
     """ Keras Implementation of EEGNet (https://arxiv.org/abs/1611.08024v3)
 
@@ -149,74 +270,74 @@ def EEGNet_wide(nb_classes, Chans=64, Samples=128, regRate=0.0001,
 
     return Model(inputs=input1, outputs=softmax)
 
-def EEGNet_output(nb_classes, Chans=64, Samples=128, regRate=0.0001,
-           dropoutRate=0.25, kernLength=64, numFilters=8, x_input=None):
-    """ Keras Implementation of EEGNet (https://arxiv.org/abs/1611.08024v3)
-
-    Requires Tensorflow >= 1.5 and Keras >= 2.1.3
-
-    Note that this implements the newest version of EEGNet and NOT the earlier
-    version (version v1 and v2 on arxiv). We strongly recommend using this
-    architecture as it performs much better and has nicer properties than
-    our earlier version.
-
-    Note that we use 'image_data_format' = 'channels_first' in there keras.json
-    configuration file.
-
-    Inputs:
-
-        nb_classes: int, number of classes to classify
-        Chans, Samples: number of channels and time points in the EEG data
-        regRate: regularization parameter for L1 and L2 penalties
-        dropoutRate: dropout fraction
-        kernLength: length of temporal convolution in first layer
-        numFilters: number of temporal-spatial filter pairs to learn
-
-    Depending on the task, using numFilters = 4 or 8 seemed to do pretty well
-    across tasks.
-    """
-    input1 = x_input
-    # input1 = Input(shape=(1, Chans, Samples))
-    # input1 = Permute((2, 1))(input_original)
-    # input1 = Reshape(target_shape=(1, Chans, Samples))(input_original)
-    layer1 = Conv2D(numFilters, (1, kernLength), padding='same',
-                    kernel_regularizer=l1_l2(l1=0.0, l2=0.0),
-                    input_shape=(1, Chans, Samples),
-                    use_bias=False,
-                    data_format='channels_first')(input1)
-    layer1 = BatchNormalization(axis=1)(layer1)
-    layer1 = DepthwiseConv2D((Chans, 1),
-                             depthwise_regularizer=l1_l2(l1=regRate, l2=regRate),
-                             use_bias=False,
-                             data_format='channels_first')(layer1)
-    layer1 = BatchNormalization(axis=1)(layer1)
-    layer1 = Activation('elu')(layer1)
-    layer1 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer1)
-
-    layer2 = SeparableConv2D(numFilters, (1, 8),
-                             depthwise_regularizer=l1_l2(l1=0.0, l2=regRate),
-                             use_bias=False, padding='same',
-                             data_format='channels_first')(layer1)
-    layer2 = BatchNormalization(axis=1)(layer2)
-    layer2 = Activation('elu')(layer2)
-    layer2 = AveragePooling2D((1, 4), data_format='channels_first')(layer2)
-    layer2 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer2)
-
-    layer3 = SeparableConv2D(numFilters * 2, (1, 8), depth_multiplier=2,
-                             depthwise_regularizer=l1_l2(l1=0.0, l2=regRate),
-                             use_bias=False, padding='same',
-                             data_format='channels_first')(layer2)
-    layer3 = BatchNormalization(axis=1)(layer3)
-    layer3 = Activation('elu')(layer3)
-    layer3 = AveragePooling2D((1, 4), data_format='channels_first')(layer3)
-    layer3 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer3)
-
-    flatten = Flatten(name='flatten')(layer3)
-
-    dense = Dense(nb_classes, name='dense')(flatten)
-    softmax = Activation('softmax', name='softmax')(dense)
-
-    return softmax
+# def EEGNet_output(nb_classes, Chans=64, Samples=128, regRate=0.0001,
+#            dropoutRate=0.25, kernLength=64, numFilters=8, x_input=None):
+#     """ Keras Implementation of EEGNet (https://arxiv.org/abs/1611.08024v3)
+#
+#     Requires Tensorflow >= 1.5 and Keras >= 2.1.3
+#
+#     Note that this implements the newest version of EEGNet and NOT the earlier
+#     version (version v1 and v2 on arxiv). We strongly recommend using this
+#     architecture as it performs much better and has nicer properties than
+#     our earlier version.
+#
+#     Note that we use 'image_data_format' = 'channels_first' in there keras.json
+#     configuration file.
+#
+#     Inputs:
+#
+#         nb_classes: int, number of classes to classify
+#         Chans, Samples: number of channels and time points in the EEG data
+#         regRate: regularization parameter for L1 and L2 penalties
+#         dropoutRate: dropout fraction
+#         kernLength: length of temporal convolution in first layer
+#         numFilters: number of temporal-spatial filter pairs to learn
+#
+#     Depending on the task, using numFilters = 4 or 8 seemed to do pretty well
+#     across tasks.
+#     """
+#     input1 = x_input
+#     # input1 = Input(shape=(1, Chans, Samples))
+#     # input1 = Permute((2, 1))(input_original)
+#     # input1 = Reshape(target_shape=(1, Chans, Samples))(input_original)
+#     layer1 = Conv2D(numFilters, (1, kernLength), padding='same',
+#                     kernel_regularizer=l1_l2(l1=0.0, l2=0.0),
+#                     input_shape=(1, Chans, Samples),
+#                     use_bias=False,
+#                     data_format='channels_first')(input1)
+#     layer1 = BatchNormalization(axis=1)(layer1)
+#     layer1 = DepthwiseConv2D((Chans, 1),
+#                              depthwise_regularizer=l1_l2(l1=regRate, l2=regRate),
+#                              use_bias=False,
+#                              data_format='channels_first')(layer1)
+#     layer1 = BatchNormalization(axis=1)(layer1)
+#     layer1 = Activation('elu')(layer1)
+#     layer1 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer1)
+#
+#     layer2 = SeparableConv2D(numFilters, (1, 8),
+#                              depthwise_regularizer=l1_l2(l1=0.0, l2=regRate),
+#                              use_bias=False, padding='same',
+#                              data_format='channels_first')(layer1)
+#     layer2 = BatchNormalization(axis=1)(layer2)
+#     layer2 = Activation('elu')(layer2)
+#     layer2 = AveragePooling2D((1, 4), data_format='channels_first')(layer2)
+#     layer2 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer2)
+#
+#     layer3 = SeparableConv2D(numFilters * 2, (1, 8), depth_multiplier=2,
+#                              depthwise_regularizer=l1_l2(l1=0.0, l2=regRate),
+#                              use_bias=False, padding='same',
+#                              data_format='channels_first')(layer2)
+#     layer3 = BatchNormalization(axis=1)(layer3)
+#     layer3 = Activation('elu')(layer3)
+#     layer3 = AveragePooling2D((1, 4), data_format='channels_first')(layer3)
+#     layer3 = SpatialDropout2D(dropoutRate, data_format='channels_first')(layer3)
+#
+#     flatten = Flatten(name='flatten')(layer3)
+#
+#     dense = Dense(nb_classes, name='dense')(flatten)
+#     softmax = Activation('softmax', name='softmax')(dense)
+#
+#     return softmax
 
 
 def EEGNet_binary(nb_classes, Chans=64, Samples=128, regRate=0.0001,
